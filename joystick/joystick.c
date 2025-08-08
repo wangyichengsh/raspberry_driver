@@ -41,10 +41,19 @@ static int __init joystick_init(void){
 	joystick = kzalloc(sizeof(struct iic_joystick), GFP_KERNEL);
 
 	joystick->adapter = i2c_get_adapter(1);
+	if (!joystick->adapter) {
+		printk("Unable to get i2c adapter\n");
+		kfree(joystick);
+		joystick = NULL;
+		return -ENOMEM;
+	}
 	
 	joystick->input = input_allocate_device();
 	if (!joystick->input) {
 		printk("Unable to allocate input device\n");
+		i2c_put_adapter(joystick->adapter);
+		kfree(joystick);
+		joystick = NULL;
 		return -ENOMEM;
 	}
 	
@@ -52,13 +61,22 @@ static int __init joystick_init(void){
 	input_set_abs_params(joystick->input, ABS_Y, 0, 4095, 100, 100);
 
 	int error = input_setup_polling(joystick->input, iic_joystick_scan);
-	if (error)
+	if (error){
+		input_free_device(joystick->input);
+		i2c_put_adapter(joystick->adapter);
+		kfree(joystick);
+		joystick = NULL;
 		return error;
+	}
 
 	input_set_poll_interval(joystick->input, 100);
 	error = input_register_device(joystick->input);
 	if (error) {
 		printk("could not register input device\n");
+		input_free_device(joystick->input);
+		i2c_put_adapter(joystick->adapter);
+		kfree(joystick);
+		joystick = NULL;
 		return error;
 	}
 	return 0;
@@ -66,6 +84,10 @@ static int __init joystick_init(void){
 
 static void __exit joystick_exit(void){
 	input_unregister_device(joystick->input);	
+	input_free_device(joystick->input);
+	i2c_put_adapter(joystick->adapter);
+	kfree(joystick);
+	joystick = NULL;
 }
 
 module_init(joystick_init);
